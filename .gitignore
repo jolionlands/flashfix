@@ -1,0 +1,31 @@
+# ---- build artifacts -------------------------------------------------------
+*.obj
+*.o
+*.lib
+*.exp
+*.pdb
+*.ilk
+build/
+
+# ---- our own built binaries (build them; grab releases for prebuilts) ------
+flashfix.exe
+shim/flashnet_shim.dll
+
+# ---- NEVER commit proprietary FlashForge binaries --------------------------
+FlashNetwork.dll
+FlashNetwork_orig.dll
+FlashNetwork.dll.vanilla
+resources/
+*.vanilla
+
+# ---- python ----------------------------------------------------------------
+__pycache__/
+*.pyc
+
+# ---- local scratch ---------------------------------------------------------
+*.log
+app*.png
+devicetab.png
+monitor.log
+wp.out
+testdir/
