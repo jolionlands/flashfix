@@ -4,25 +4,16 @@ Make **Flash Studio** (`flash studio.exe`, a.k.a. Orca-Flashforge) work with
 FlashForge printers that live on a **different subnet** — across a second
 router, WireGuard, Tailscale, or any number of network hops.
 
-> Typical case: `laptop (10.0.0.x) → router → ISP router → printers (10.20.0.x)`
-
-Two parts, and you need both:
-
-| part | what it does |
-|------|--------------|
-| **`flashfix.exe`** | finds the printers and writes their real IPs into `Orca-Flashforge.conf`, correctly re-signed |
-| **`shim/`** | a drop-in `FlashNetwork.dll` that makes the app *read* those IPs |
-
-Then the Device tab works normally: printers Online, status, temps, camera,
-upload-and-print.
+Common case: the PC sits on one subnet and the printers on another, reachable
+only by routing (usually a second router doing NAT).
 
 ---
 
-## TL;DR
+## Quick start
 
 ```cmd
 REM 1. locate the printers and patch the config
-flashfix.exe sync 10.20.0.0/24
+flashfix.exe sync <PRINTER-SUBNET>      REM the printers' subnet, e.g. 10.20.0.0/24
 
 REM 2. install the DLL shim (elevated), then restart Flash Studio
 pwsh -File shim\install.ps1
@@ -57,8 +48,8 @@ subnet). Across a router it finds nothing, so the app saves the devices with an
 ```jsonc
 // %APPDATA%\Orca-Flashforge\Orca-Flashforge.conf
 "local_machines": {
-    "SN-AD5X-0001": { "dev_ip": "", ... },   // <-- unusable
-    "SN-C5-0002":   { "dev_ip": "", ... }
+    "SN-PRINTER-0001": { "dev_ip": "", ... },   // <-- unusable
+    "SN-PRINTER-0002":   { "dev_ip": "", ... }
 }
 ```
 
@@ -163,14 +154,14 @@ $ flashfix.exe status
 config : %APPDATA%\Orca-Flashforge\Orca-Flashforge.conf
 checksum: OK (stored 7F27732469364C39F82573AC0C9089F1)
 printers: 2 configured
-   SN-AD5X-0001   dev_ip=10.20.0.20  name=SN-AD5X-0001  pid=36  code=a1b2c3d4  tcp=reachable
-                    -> printer API answered OK
-   SN-C5-0002     dev_ip=10.20.0.21  name=Creator 5     pid=40  code=e5f6a7b8  tcp=reachable
-                    -> printer API answered OK
+   SN-PRINTER-0001  dev_ip=10.20.0.20  name=SN-PRINTER-0001  pid=36  code=a1b2c3d4  tcp=reachable
+                      -> printer API answered OK
+   SN-PRINTER-0002  dev_ip=10.20.0.21  name=PRINTER-2       pid=40  code=e5f6a7b8  tcp=reachable
+                      -> printer API answered OK
 app    : running
 
 $ flashfix.exe devices
-SN-AD5X-0001   10.20.0.20  (SN-AD5X-0001)
+SN-PRINTER-0001   10.20.0.20  (SN-PRINTER-0001)
     tcp 8898 (HTTP JSON API)   : open
     tcp 8899 (G-code console)  : open
     tcp 8080 (camera stream)   : open
@@ -188,7 +179,7 @@ probe:  "~M119\n"   →   UDP 48899  (and 19000)
 reply:  280 bytes
         0x00  name          128 bytes, NUL padded
         0x84  control port  u16 big-endian (8899)
-        0x88  dev pid       u16 big-endian (36 = AD5X, 40 = Creator 5)
+        0x88  dev pid       u16 big-endian (model id, e.g. 36 / 40)
         0x92  serial        64 bytes, NUL padded
 ```
 
@@ -251,21 +242,25 @@ overwrite `FlashNetwork.dll` — re-run `install.ps1`.**
 
 `tools/gen_forwards.py` reads the export table of the *installed*
 `FlashNetwork.dll` and regenerates the header, the assembly trampolines and the
-`.def`. Verified against **Flash Studio 1.7.17 / FlashNetwork 3.4.3** (131
-exports). If a future version changes its exports, `build.bat` regenerates
-everything to match.
+`.def`. It is deliberately version-agnostic: if a Flash Studio update changes
+the export set, `build.bat` regenerates everything to match. If an export is
+*removed*, the generator simply stops emitting it; if one is *added*, it is
+forwarded automatically.
+
+The checked-in generated files target a 131-export build. Running `build.bat`
+on your own installation replaces them with files matching your version.
 
 ---
 
 ## Other observations from working this out
 
-Both printers expose two independent control paths, which is why nothing here
-depends on a single fragile channel:
+Both printers I tested expose two independent control paths, which is why
+nothing here depends on a single fragile channel:
 
 | | 8898 HTTP JSON | 8899 G-code console | 8080 camera |
 |---|---|---|---|
-| AD5X | ✅ | ✅ | ✅ |
-| Creator 5 | ✅ | ❌ refused | ✅ |
+| printer A | ✅ | ✅ | ✅ |
+| printer B | ✅ | ❌ refused | ✅ |
 
 - **8898** — `POST /detail {"serialNumber":..., "checkCode":...}` returns
   status, firmware, nozzle, temperatures, filament, progress and the camera URL
@@ -274,7 +269,7 @@ depends on a single fragile channel:
   print-host backend (`PrintHostUpload` → `~M28` → `~M23`)
 - **8080** — `http://<ip>:8080/?action=stream`
 
-The Creator 5 has no console port at all — it is HTTP-API-only.
+One of mine has no console port at all — it is HTTP-API-only.
 
 ---
 

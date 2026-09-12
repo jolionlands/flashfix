@@ -504,11 +504,15 @@ static void copy_len(char *dst, size_t cap, const char *src, size_t srclen)
 
 /* Parse a FlashForge discovery reply.
  *
- * Layout (as emitted by AD5X / Creator 5 firmware, 280 bytes, big-endian):
- *      0x00  char  dev_name[128]   NUL padded   ("Creator 5" or the serial)
+ * Layout of the 280-byte reply, all multi-byte fields big-endian:
+ *      0x00  char  dev_name[128]   NUL padded   (the printer's name, or its serial)
  *      0x84  u16   tcp/udp port    (8899 -- the legacy G-code control port)
- *      0x88  u16   dev_pid         BIG endian (36 = AD5X, 40 = Creator 5)
- *      0x92  char  serial[64]      NUL padded   ("SN-C5-0002")
+ *      0x88  u16   dev_pid         model id (the same value the app stores as dev_pid)
+ *      0x92  char  serial[64]      NUL padded   (the device serial)
+ *
+ * dev_pid examples seen in the wild: 36, 40. The value matters because the app
+ * uses it to pick the right printer definition, so it is carried straight into
+ * the config rather than guessed.
  */
 static void parse_reply(const char *ip, const unsigned char *d, size_t len)
 {
@@ -1763,26 +1767,27 @@ static int cmd_route(void)
 {
     printf("If a printer is UNREACHABLE (no ping / no tcp 8898), fix routing first;\n"
            "flashfix only fixes Flash Studio's discovery/config.\n\n"
-           "  arp/ping test      : ping 10.20.0.20\n"
-           "  tcp test           : curl -m 3 http://10.20.0.20:8898/  (any answer = routed)\n\n"
+           "  arp/ping test      : ping <PRINTER-IP>\n"
+           "  tcp test           : curl -m 3 http://<PRINTER-IP>:8898/  (any answer = routed)\n\n"
            "A) Windows route via the next hop (temporary):\n"
-           "     route add 192.168.1.0 mask 255.255.255.0 <GATEWAY-IP>\n"
-           "     route add 192.168.1.0 mask 255.255.255.0 <GATEWAY-IP> -p   (persistent)\n\n"
+           "     route add <PRINTER-SUBNET> mask <MASK> <GATEWAY-IP>\n"
+           "     route add <PRINTER-SUBNET> mask <MASK> <GATEWAY-IP> -p   (persistent)\n\n"
            "B) WireGuard: add the printer subnet to the peer that bridges to it:\n"
            "     [Peer]\n"
-           "     AllowedIPs = 10.0.0.0/24, 10.20.0.0/24\n"
+           "     AllowedIPs = <YOUR-SUBNET>, <PRINTER-SUBNET>\n"
            "   and on the far side enable ip forwarding + masquerade:\n"
            "     sysctl -w net.ipv4.ip_forward=1\n"
            "     iptables -t nat -A POSTROUTING -o <lan-if> -j MASQUERADE\n\n"
            "C) Tailscale: advertise the printer subnet from a node on it:\n"
-           "     tailscale up --advertise-routes=10.20.0.0/24\n"
+           "     tailscale up --advertise-routes=<PRINTER-SUBNET>\n"
            "   then approve the route in the admin console and enable\n"
            "   \"Allow local network access\" on this machine.\n\n"
-           "D) Two-router setups (your case: router1 -> verizon_router -> printers):\n"
-           "   make sure the *upstream* router can route back to this subnet, or\n"
-           "   the WAN interface of this router NATs it. Since ICMP/TCP to the\n"
-           "   printers already works from here, routing is fine -- you only need\n"
-           "   the `sync` step so Flash Studio learns the printer IPs.\n");
+           "D) Two-router setups (PC on one subnet, printers behind a second\n"
+           "   router on another): make sure the *upstream* router can route back\n"
+           "   to this subnet, or that the nearer router's WAN interface NATs it.\n"
+           "   If ICMP/TCP to the printers already works from here, routing is\n"
+           "   fine -- you only need the `sync` step so Flash Studio learns the\n"
+           "   printer IPs.\n");
     return 0;
 }
 

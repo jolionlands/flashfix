@@ -101,7 +101,7 @@ pwsh -File verify.ps1
   app running    : pid 19560
   loaded modules : FlashNetwork.dll, FlashNetwork_orig.dll
   printer conns  :
-     10.0.0.100:49394 -> 10.20.0.21:8080  Established
+     <PC-IP>:49394 -> <PRINTER-IP>:8080  Established
 ```
 
 ## Build
@@ -151,25 +151,25 @@ Test harness (`testdir/`), built against the real DLL:
 
 ```
 loaded ...\FlashNetwork.dll
-fnet_getVersion (forwarded) = 3.4.3
+fnet_getVersion (forwarded) = <version>
 fnet_getLanDevList rc=0 count=2
-  [0] sn=SN-AD5X-0001    ip=10.20.0.20    port=8898   pid=36   mode=0 bind=0
-  [1] sn=SN-C5-0002    ip=10.20.0.21    port=8898   pid=40   mode=0 bind=0
+  [0] sn=SN-PRINTER-0001    ip=10.20.0.20    port=8898   pid=36   mode=0 bind=0
+  [1] sn=SN-PRINTER-0002      ip=10.20.0.21    port=8898   pid=40   mode=0 bind=0
 freed ok
 ```
 
 Deeper test calling *into the printers* through the trampolines:
 
 ```
-version           : 3.4.3
+version           : <version>
 setUserAgent      : ok
 getLanDevList     : rc=0 n=2
-  product[SN-AD5X-0001 @ 10.20.0.20] rc=0 ptr=00000198529093F0
-  product[SN-C5-0002 @ 10.20.0.21] rc=0 ptr=0000019852909550
+  product[SN-PRINTER-0001 @ 10.20.0.20] rc=0 ptr=<ptr>
+  product[SN-PRINTER-0002 @ 10.20.0.21] rc=0 ptr=<ptr>
 ```
 
 `fnet_getLanDevProduct` returning `0` means the real DLL successfully fetched
 printer data over HTTP using our injected addresses — i.e. the whole chain works.
 
 In the live app: both DLLs load, and Flash Studio holds an established
-connection to `10.20.0.21:8080`.
+connection to the printer's camera port (`<PRINTER-IP>:8080`).
